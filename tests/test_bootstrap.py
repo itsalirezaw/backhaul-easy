@@ -12,6 +12,7 @@ import sys
 import re
 import runpy
 import shlex
+import stat
 import tarfile
 import tempfile
 from types import SimpleNamespace
@@ -177,10 +178,46 @@ class BootstrapRollbackTests(InstallerFilesFixture):
         self.stack.enter_context(mock.patch.object(installer.os, "geteuid", return_value=0, create=True))
         self.stack.enter_context(mock.patch.object(installer.os, "O_NOFOLLOW", getattr(installer.os, "O_NOFOLLOW", 0), create=True))
         self.stack.enter_context(mock.patch.object(installer.os, "fchmod", create=True))
+        # These lifecycle tests simulate a root-run installer, including the
+        # lock's ownership. CI creates the temporary files as a non-root user;
+        # Windows happens to report UID 0, which previously hid that mismatch.
+        # Keep real metadata for every descriptor other than the fixture lock.
+        real_fstat = installer.os.fstat
+        def root_owned_lock(descriptor):
+            info = real_fstat(descriptor)
+            if installer.LOCK.exists():
+                lock_info = installer.LOCK.stat()
+                if (info.st_dev, info.st_ino) == (lock_info.st_dev, lock_info.st_ino):
+                    return SimpleNamespace(st_mode=info.st_mode, st_uid=0, st_nlink=info.st_nlink)
+            return info
+        self.stack.enter_context(mock.patch.object(installer.os, "fstat", side_effect=root_owned_lock))
         self.stack.enter_context(mock.patch.object(installer.time, "sleep"))
         self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
         self.stack.enter_context(mock.patch.dict(sys.modules, {"fcntl": SimpleNamespace(flock=mock.Mock(), LOCK_EX=2, LOCK_NB=4)}))
         return self.source_fixture()
+
+    def test_unsafe_lock_metadata_prevents_writes_and_service_actions(self):
+        self.seed_receipt()
+        watched = self.allowed | {self.receipt}
+        before = {path: path.read_bytes() for path in watched}
+        source, bundle = self.prepare_install()
+        cases = (
+            SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=1001, st_nlink=1),
+            SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0, st_nlink=2),
+            SimpleNamespace(st_mode=stat.S_IFIFO | 0o600, st_uid=0, st_nlink=1),
+        )
+        for metadata in cases:
+            with self.subTest(metadata=metadata), \
+                    mock.patch.object(installer.os, "fstat", return_value=metadata), \
+                    mock.patch.object(installer, "atomic_write") as write, \
+                    mock.patch.object(installer, "service_active") as service, \
+                    mock.patch.object(installer.subprocess, "run") as run:
+                with self.assertRaisesRegex(ValueError, "Unsafe lifecycle lock file"):
+                    installer.install(source, bundle, upgrade=True)
+                write.assert_not_called()
+                service.assert_not_called()
+                run.assert_not_called()
+                self.assertEqual({path: path.read_bytes() for path in watched}, before)
 
     def test_failed_upgrade_restores_every_file_and_receipt_byte_for_byte(self):
         self.seed_receipt()
@@ -281,6 +318,7 @@ class StandaloneBundleTests(unittest.TestCase):
                 self.assertEqual(set(archive.namelist()), names)
                 self.assertEqual(len(archive.infolist()), len(names))
                 for name in names:
+                    self.assertEqual(archive.getinfo(name).create_system, 3)
                     data = archive.read(name)
                     self.assertEqual(data, project.joinpath(name).read_text(encoding="utf-8").replace("\r\n", "\n").encode())
                     embedded.joinpath(name).write_bytes(data)

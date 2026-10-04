@@ -14,6 +14,7 @@ with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED, compressleve
         if name.endswith('.py'):
             compile(text, name, 'exec')
         info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+        info.create_system = 3  # Keep ZIP metadata identical on Windows and Linux.
         info.compress_type = zipfile.ZIP_DEFLATED
         info.external_attr = 0o100600 << 16
         archive.writestr(info, text.encode('utf-8'))

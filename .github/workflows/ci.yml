@@ -28,7 +28,7 @@ jobs:
       - name: Check reproducible installer and shell syntax
         run: |
           python tools/build_installer.py
-          git diff --exit-code -- install.sh
+          git diff --quiet -- install.sh || { echo 'Rebuilt installer differs from the committed bundle'; exit 1; }
           bash -n install.sh
           bash install.sh --help
       - name: Verify official Backhaul engine

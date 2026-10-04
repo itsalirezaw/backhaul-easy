@@ -19,6 +19,7 @@ destination = DIST / 'backhaul-easy-1.0.0-source.zip'
 with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
     for name in sorted(NAMES):
         info = zipfile.ZipInfo('backhaul-easy/' + name, date_time=(2026, 1, 1, 0, 0, 0))
+        info.create_system = 3
         info.compress_type = zipfile.ZIP_DEFLATED
         info.external_attr = 0o100644 << 16
         archive.writestr(info, (ROOT / name).read_bytes())

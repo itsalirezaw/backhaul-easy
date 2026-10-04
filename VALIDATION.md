@@ -4,7 +4,7 @@ Date: 2026-10-04. This record separates local checks from live Linux deployment.
 
 ## Completed
 
-- **71 offline unit tests passed** on Windows using Python 3.12. The suite covers both roles and all seven official transport configuration schemas, pairing, malformed inputs, port mappings, receipt ownership, failed updates, interrupted updates, and rollback of the dedicated panel helper.
+- **72 offline unit tests passed** on Windows using Python 3.12. The suite covers both roles and all seven official transport configuration schemas, pairing, malformed inputs, port mappings, receipt ownership, failed updates, interrupted updates, and rollback of the dedicated panel helper.
 - Reproducible standalone installer build: two builds produce identical bytes; decoded embedded modules match their source files; modules parse using Python 3.10 syntax.
 - Bash syntax validation and the standalone installer's help command using Git Bash.
 - Official Xray **v26.3.27**, Windows amd64 asset: SHA-256 verified against GitHub release metadata. `xray run -test` accepted the generated dedicated proxy configuration. A temporary Xray child process successfully relayed authenticated VLESS TCP and UDP random echo payloads on loopback. The test process and temporary directory were removed. No installed services were changed.
