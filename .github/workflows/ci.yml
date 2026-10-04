@@ -1,0 +1,48 @@
+name: Validate installer and transports
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Run offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Check reproducible installer and shell syntax
+        run: |
+          python tools/build_installer.py
+          git diff --exit-code -- install.sh
+          bash -n install.sh
+          bash install.sh --help
+      - name: Verify official Backhaul engine
+        env:
+          ENGINE_DIR: ${{ runner.temp }}/backhaul-easy-engine
+        run: |
+          mkdir -p "$ENGINE_DIR"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import bootstrap
+          destination = Path(os.environ['ENGINE_DIR']) / 'backhaul'
+          destination.write_bytes(bootstrap.fetch_binary())
+          destination.chmod(0o700)
+          PY
+      - name: Exercise all seven transports with real payloads
+        run: python tests/integration_backhaul.py --binary "$RUNNER_TEMP/backhaul-easy-engine/backhaul"
